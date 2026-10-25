@@ -1,5 +1,6 @@
 import json
 import shutil
+import tempfile
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -21,6 +22,10 @@ from .editor import (
 
 from .supabase_storage import (
     SupabaseStorage,
+)
+
+from .video_utils import (
+    add_subtitles_to_video_pipeline,
 )
 
 
@@ -260,14 +265,25 @@ def run_pipeline(
     # STEP 4: EXECUTE EDITSPEC
     # ========================================================
 
-    print("\n[4/4] Executing EditSpec...")
+    print("\n[4/4] Executing EditSpec and adding subtitles...")
 
     edited_video = project_output_dir / "edited.mp4"
 
-    execute_editspec(
-        str(editspec_path),
-        str(edited_video),
-    )
+    # Render to a temporary workspace file first. Whisper then transcribes the
+    # final cut's audio, and ffmpeg writes the hardsubbed video to outputs/.
+    with tempfile.TemporaryDirectory(
+        prefix="edited_source_",
+        dir=project_workspace,
+    ) as edit_temp_dir:
+        unsubtitled_video = Path(edit_temp_dir) / "edited.mp4"
+        execute_editspec(
+            str(editspec_path),
+            str(unsubtitled_video),
+        )
+        add_subtitles_to_video_pipeline(
+            unsubtitled_video,
+            edited_video,
+        )
 
     # Keep a copy in root outputs for any external tooling checking outputs/edited.mp4
     try:
