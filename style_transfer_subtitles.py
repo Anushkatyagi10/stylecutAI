@@ -521,6 +521,8 @@ def render_subtitled_video(
     font_size_override: Optional[int] = None,
     color_override: Optional[str] = None,
     stroke_width_override: Optional[int] = None,
+    reference_path: Optional[Path] = None,
+    enable_tick_sound: bool = True,
 ) -> None:
     try:
         from moviepy import CompositeVideoClip, TextClip, VideoFileClip
@@ -534,6 +536,7 @@ def render_subtitled_video(
     video = VideoFileClip(str(target_path))
     overlays: list[Any] = []
     composite = None
+    font_change_timestamps: list[float] = []
     try:
         output_font_size = int(font_size_override or round(
             style.font_size_reference_video_height_ratio * video.h
@@ -581,6 +584,34 @@ def render_subtitled_video(
             clip = _chain_method(clip, "with_start", "set_start", start)
             overlays.append(clip)
 
+        # Collect tick timestamps strictly at full stops, not every second
+        has_punct = any(re.search(r"[\.!?]", str(w.get("text", ""))) for w in words)
+        last_tick_time = -10.0
+        min_interval = 2.0  # Minimum seconds between ticks to avoid ticking every second
+
+        for i, word in enumerate(words):
+            start = max(0.0, float(word["start"]))
+            end = min(float(video.duration), float(word["end"]))
+            text = str(word.get("text", "")).strip()
+            if not text or end - start < 0.025:
+                continue
+
+            is_full_stop = False
+            words_in_text = text.split()
+            if has_punct:
+                if re.search(r"[\.!?]+$", text) or "." in text:
+                    is_full_stop = True
+            else:
+                next_start = float(words[i + 1]["start"]) if i + 1 < len(words) else end + 1.0
+                if (next_start - end >= 0.45) or (i == len(words) - 1):
+                    is_full_stop = True
+
+            if is_full_stop:
+                tick_time = round(start, 3) if len(words_in_text) == 1 else round(end, 3)
+                if tick_time - last_tick_time >= min_interval:
+                    font_change_timestamps.append(tick_time)
+                    last_tick_time = tick_time
+
         composite = CompositeVideoClip([video, *overlays], size=video.size)
         composite = _chain_method(composite, "with_duration", "set_duration", video.duration)
         with tempfile.TemporaryDirectory(prefix="subtitle_render_", dir=str(output_path.parent)) as temp_dir:
@@ -599,7 +630,38 @@ def render_subtitled_video(
             )
             if not render_path.is_file() or render_path.stat().st_size == 0:
                 raise RuntimeError("MoviePy finished without producing a usable rendered video.")
-            os.replace(render_path, output_path)
+
+            if enable_tick_sound and font_change_timestamps:
+                try:
+                    from app.video_utils import analyze_subtitle_tick_sound, mix_tick_sounds_into_video_audio, run_ffmpeg
+                    tick_profile = None
+                    if reference_path and reference_path.exists():
+                        tick_profile = analyze_subtitle_tick_sound(reference_path, Path(temp_dir))
+                    enhanced_audio = Path(temp_dir) / "enhanced_tick_audio.wav"
+                    mix_tick_sounds_into_video_audio(
+                        render_path,
+                        enhanced_audio,
+                        font_change_timestamps,
+                        tick_profile=tick_profile,
+                    )
+                    mux_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", str(render_path),
+                        "-i", str(enhanced_audio),
+                        "-map", "0:v:0",
+                        "-map", "1:a:0",
+                        "-c:v", "copy",
+                        "-c:a", "aac",
+                        "-b:a", "192k",
+                        "-movflags", "+faststart",
+                        str(output_path),
+                    ]
+                    run_ffmpeg(mux_cmd)
+                except Exception as tick_err:
+                    print(f"Warning: could not mix tick sounds: {tick_err}")
+                    os.replace(render_path, output_path)
+            else:
+                os.replace(render_path, output_path)
     finally:
         if composite is not None:
             composite.close()
@@ -654,6 +716,8 @@ def run(reference_path: Path, target_path: Path, output_path: Path, args: argpar
             font_size_override=args.font_size,
             color_override=args.color,
             stroke_width_override=args.stroke_width,
+            reference_path=reference_path,
+            enable_tick_sound=not args.no_tick_sound,
         )
     print(f"Saved styled subtitled video: {output_path} ({output_path.stat().st_size:,} bytes)")
     print("Temporary audio, SRT, FFmpeg alias, and render audio files were removed.")
@@ -674,6 +738,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--sample-fps", type=float, default=4.0, help="Reference OCR sample rate (default: 4 frames/sec).")
     parser.add_argument("--max-samples", type=int, default=320, help="Maximum reference frames sampled for OCR.")
     parser.add_argument("--tesseract-cmd", help="Tesseract executable path if it is not on PATH.")
+    parser.add_argument("--no-tick-sound", action="store_true", help="Disable adding tick sounds on subtitle font changes.")
     args = parser.parse_args(argv)
     return args
 

@@ -283,6 +283,10 @@ def run_pipeline(
         add_subtitles_to_video_pipeline(
             unsubtitled_video,
             edited_video,
+            reference_video=ref_video_path,
+            reference_analysis=reference_analysis,
+            editspec=editspec,
+            enable_tick_sound=True,
         )
 
     # Keep a copy in root outputs for any external tooling checking outputs/edited.mp4

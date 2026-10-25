@@ -856,6 +856,9 @@ Return ONLY the final JSON object.
             "[LLAMA] Validating EditSpec..."
         )
 
+        if isinstance(parsed, dict) and reference_data.get("subtitle_tick_sound") and not parsed.get("subtitle_tick_sound"):
+            parsed["subtitle_tick_sound"] = reference_data["subtitle_tick_sound"]
+
         try:
 
             validated = EditSpec.model_validate(

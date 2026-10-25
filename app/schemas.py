@@ -56,6 +56,50 @@ class ReferenceSegment(BaseModel):
 
 
 # ============================================================
+# SUBTITLE TICK SOUND ANALYSIS
+# ============================================================
+
+class SubtitleTickSoundAnalysis(BaseModel):
+    detected: bool = Field(
+        default=True,
+        description="Whether a tick/click sound is produced on subtitle font changes in the reference video"
+    )
+    sound_type: str = Field(
+        default="mechanical_tick",
+        description="Type of tick sound, e.g. mechanical_tick, typewriter_click, pop, click"
+    )
+    frequency_hz: float = Field(
+        default=2200.0,
+        description="Dominant pitch/frequency of the tick sound in Hz"
+    )
+    duration_ms: float = Field(
+        default=35.0,
+        description="Duration of the tick sound in milliseconds"
+    )
+    volume: float = Field(
+        default=0.65,
+        description="Relative volume of the tick sound from 0.0 to 1.0"
+    )
+    font_change_triggers: List[str] = Field(
+        default_factory=lambda: [
+            "font_family_change",
+            "font_size_emphasis",
+            "word_transition",
+            "style_pop"
+        ],
+        description="Events that trigger the tick sound"
+    )
+    timestamps: List[float] = Field(
+        default_factory=list,
+        description="Observed timestamps of subtitle font changes with tick sounds in reference video"
+    )
+    extracted_sample_path: Optional[str] = Field(
+        default=None,
+        description="Path to extracted reference tick sample WAV file if available"
+    )
+
+
+# ============================================================
 # REFERENCE ANALYSIS
 # ============================================================
 
@@ -68,6 +112,8 @@ class ReferenceAnalysis(BaseModel):
     total_segments: int
 
     segments: List[ReferenceSegment]
+
+    subtitle_tick_sound: Optional[SubtitleTickSoundAnalysis] = None
 
 
 # ============================================================
@@ -163,3 +209,5 @@ class EditSpec(BaseModel):
     global_operations: List[EditOperation] = Field(
         default_factory=list
     )
+
+    subtitle_tick_sound: Optional[SubtitleTickSoundAnalysis] = None
