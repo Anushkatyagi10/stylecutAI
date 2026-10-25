@@ -6,6 +6,8 @@ pydantic>=2.0
 python-dotenv
 moviepy
 openai-whisper
+imageio-ffmpeg
+pytesseract
 
 torch
 transformers>=4.43.0

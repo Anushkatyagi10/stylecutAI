@@ -2,3 +2,10 @@ myenv/
 .env
 __pycache__/
 app/__pycache__/
+node_modules/
+.pnpm-store/
+.DS_Store
+data/reference.mp4
+data/target1.mp4
+outputs/
+workspace/
