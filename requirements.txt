@@ -5,6 +5,7 @@ scenedetect[opencv]
 pydantic>=2.0
 python-dotenv
 moviepy
+openai-whisper
 
 torch
 transformers>=4.43.0
