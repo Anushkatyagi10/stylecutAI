@@ -18,6 +18,7 @@ from .video_utils import (
     detect_scenes,
     extract_representative_frames,
     analyze_motion,
+    analyze_subtitle_tick_sound,
 )
 
 
@@ -291,6 +292,19 @@ def analyze_reference_video(
         )
 
     # --------------------------------------------------------
+    # 3b. SUBTITLE TICK SOUND ANALYSIS
+    # --------------------------------------------------------
+
+    print(
+        "[REFERENCE] Running subtitle tick sound analysis..."
+    )
+
+    tick_analysis = analyze_subtitle_tick_sound(
+        video_path,
+        workspace_dir,
+    )
+
+    # --------------------------------------------------------
     # 4. REFERENCE GEMINI CLIENT
     # --------------------------------------------------------
 
@@ -312,9 +326,7 @@ def analyze_reference_video(
     )
 
     uploaded_video = upload_video(
-
         client,
-
         video_path,
     )
 
@@ -323,10 +335,9 @@ def analyze_reference_video(
     # --------------------------------------------------------
 
     deterministic_data = {
-
         "metadata": metadata,
-
         "segments": segments,
+        "subtitle_tick_sound": tick_analysis.model_dump(),
     }
 
     # --------------------------------------------------------
@@ -344,12 +355,18 @@ The video has already been analyzed using:
 - FFprobe
 - PySceneDetect
 - OpenCV
+- Subtitle Tick Sound Audio Transient Detector
 
 The supplied segment boundaries are authoritative.
 
 DO NOT invent new segment boundaries.
 
 Analyze every segment.
+
+Also analyze the subtitle font changes and accompanying tick sound:
+- Check if a tick/click sound is produced on subtitle font changes (emphasis pops, font size changes, word transitions).
+- Provide subtitle_tick_sound matching the schema (detected, sound_type, frequency_hz, duration_ms, volume, font_change_triggers, timestamps).
+- If deterministic subtitle_tick_sound is provided in the analysis below, verify and refine it.
 
 For every segment determine:
 
@@ -480,6 +497,13 @@ Return ONLY valid JSON.
     print(
         "[REFERENCE] Validating Gemini result..."
     )
+
+    if isinstance(result, dict):
+        if not result.get("subtitle_tick_sound") and tick_analysis:
+            result["subtitle_tick_sound"] = tick_analysis.model_dump()
+        elif result.get("subtitle_tick_sound") and tick_analysis and tick_analysis.extracted_sample_path:
+            if not result["subtitle_tick_sound"].get("extracted_sample_path"):
+                result["subtitle_tick_sound"]["extracted_sample_path"] = tick_analysis.extracted_sample_path
 
     validated = ReferenceAnalysis.model_validate(
         result
